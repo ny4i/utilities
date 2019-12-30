@@ -25,7 +25,7 @@ open (DXFILE, ">> $dxFileName") || die "problem opening $dxFileName\n";
 while (<>) {
    $recCount++;
    my $line = $_;
-   if (/"(.*)".*,.*"(.*)".*,.*"(.*)".*,.*"(.*)"/) { // Should add IPv6 support too.
+   if (/"(.*)".*,.*"(.*)".*,.*"(.*)".*,.*"(.*)"/) { # Should add IPv6 support too.
       my $name = $1;
       my $hostname = $2;
       my $port = $3;
