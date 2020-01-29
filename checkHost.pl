@@ -1,6 +1,4 @@
 #!/usr/bin/perl
-# Thomas M. Schaefer, NY4I C. 2020
-
 use strict;
 use Net::DNS::Nslookup;
 use Net::Telnet;
@@ -18,6 +16,19 @@ my $date = strftime "%Y-%m-%d", localtime;
 my $dxFileName = "DXCLUSTERS.DAT.$date";
 my $trFileName = "trcluster.dat.$date";
 
+# Check canary hosts to verify DNS resolution is working
+my $nslookup = Net::DNS::Nslookup->get_ips("ve7cc.net");
+printf("%s\n", $nslookup);
+if (length($nslookup) == 0){
+   die "Cannot resolve known host ve7cc.net - Check DNS functionality\n";
+}
+
+$nslookup = Net::DNS::Nslookup->get_ips("dx.k3lr.com");
+if (length($nslookup) == 0){
+   die "Cannot resolve known host dx.k3lr.com - Check DNS functionality\n";
+}
+
+
 open (TRFILE, ">> $trFileName") || die "problem opening $trFileName\n";
 open (DXFILE, ">> $dxFileName") || die "problem opening $dxFileName\n";
 
@@ -25,7 +36,7 @@ open (DXFILE, ">> $dxFileName") || die "problem opening $dxFileName\n";
 while (<>) {
    $recCount++;
    my $line = $_;
-   if (/"(.*)".*,.*"(.*)".*,.*"(.*)".*,.*"(.*)"/) { # Should add IPv6 support too.
+   if (/"(.*)".*,.*"(.*)".*,.*"(.*)".*,.*"(.*)"/) {
       my $name = $1;
       my $hostname = $2;
       my $port = $3;
