@@ -11,7 +11,7 @@ while (<>) {
          #print "DX?\t$call\t$exch2\n";
       } else {
          # Not a number so check if valid abbreviation
-         if ($exch2 =~ /^(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|P[AR]|RI|S[CD]|T[NX]|UT|V[AIT]|W[AIVY]|AB|BC|GH|MB|NB|NL|NS|ONE|ONN|ONS|PE|QC|SK|TER)$/) {
+         if ($exch2 =~ /^(DX|MX|CT|EMA|ME|NH|RI|VT|WMA|ENY|NLI|NNJ|NNY|SNJ|WNY|DE|EPA|MDC|WPA|AL|GA|KY|NC|NFL|SC|SFL|WCF|TN|VA|PR|VI|AR|LA|MS|NM|NTX|OK|STX|WTX|EB|LAX|ORG|SB|SCV|SDG|SF|SJV|SV|PAC|AZ|EWA|ID|MT|NV|OR|UT|WWA|WY|AK|MI|OH|WV|IL|IN|WI|CO|IA|KS|MN|MO|NE|ND|SD|AB|BC|GH|MB|NB|NL|NS|ONE|ONN|ONS|PE|QC|SK|TER)$/) {
          } else {
             print "$call\t $exch2 not valid\n";
          }
