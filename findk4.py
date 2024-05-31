@@ -18,7 +18,8 @@ done = False
 nK4Count = 0
 
 
-interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET) # AF_INET specifies only to return IPv4-capable interfaces
+interfaces = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET) # AF_INET specifies only to return IPv4-capable interfaces
+#interfaces = socket.getaddrinfo(host=socket.gethostname(), port=None, family=socket.AF_INET) # AF_INET specifies only to return IPv4-capable interfaces
 IPList = [ip[-1][0] for ip in interfaces]
 if verbose:
    for ip in IPList:
