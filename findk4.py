@@ -18,6 +18,7 @@ Compatible with Python 2.7+ and Python 3.x
 from __future__ import print_function
 import argparse
 import logging
+import psutil
 import socket
 import sys
 
@@ -56,31 +57,56 @@ BROADCAST_ADDRESS = "255.255.255.255"  # Broadcast to all hosts
 logger = logging.getLogger(__name__)
 
 
+
 def get_network_interfaces():
     # type: () -> List[str]
     """
-    Get all IPv4 network interfaces on this host.
+    Get all non-loopback IPv4 addresses on this host, including VLANs.
 
     Returns:
         List of IPv4 addresses as strings
-
-    Raises:
-        RuntimeError: If unable to get network interfaces
     """
-    try:
-        # Use positional args only for Python 2 compatibility
-        interfaces = socket.getaddrinfo(
-            socket.gethostname(),
-            None,
-            socket.AF_INET  # Only IPv4-capable interfaces
-        )
-        ip_list = [ip[-1][0] for ip in interfaces]
-        logger.debug("Found %d network interface(s)", len(ip_list))
-        for ip in ip_list:
-            logger.debug("Interface found with IP address %s", ip)
-        return ip_list
-    except socket.gaierror as e:
-        raise RuntimeError("Failed to get network interfaces: {0}".format(e))
+    ip_list = []
+
+    addrs = psutil.net_if_addrs()  # {ifname: [snicaddr, ...]}
+    for ifname, addr_list in addrs.items():
+        for addr in addr_list:
+            if addr.family == socket.AF_INET:
+                ip = addr.address
+                if ip.startswith("127."):
+                    continue  # skip loopback
+                ip_list.append(ip)
+                logger.debug("Interface %s has IPv4 address %s", ifname, ip)
+
+    logger.debug("Found %d network interface(s)", len(ip_list))
+    return ip_list
+
+
+# def get_network_interfaces():
+#     # type: () -> List[str]
+#     """
+#     Get all IPv4 network interfaces on this host.
+# 
+#     Returns:
+#         List of IPv4 addresses as strings
+# 
+#     Raises:
+#         RuntimeError: If unable to get network interfaces
+#     """
+#     try:
+#         # Use positional args only for Python 2 compatibility
+#         interfaces = socket.getaddrinfo(
+#             socket.gethostname(),
+#             None,
+#             socket.AF_INET  # Only IPv4-capable interfaces
+#         )
+#         ip_list = [ip[-1][0] for ip in interfaces]
+#         logger.debug("Found %d network interface(s)", len(ip_list))
+#         for ip in ip_list:
+#             logger.debug("Interface found with IP address %s", ip)
+#         return ip_list
+#     except socket.gaierror as e:
+#         raise RuntimeError("Failed to get network interfaces: {0}".format(e))
 
 
 def broadcast_discovery(ip, port):
@@ -272,12 +298,16 @@ def discover_k4_radios(timeout):
                 if radio_id not in discovered:
                     discovered.add(radio_id)
                     serial_padded = response['serial'].zfill(SERIAL_NUMBER_WIDTH)
+                    # K4/0 (K4 Zero) uses "K4Z-" prefix, regular K4 uses "K4-"
+                    hostname_prefix = "K4Z" if response['type'].lower() == "k4z" else "K4"
                     logger.info(
-                        "Found K4 serial number %s at IP address %s (K4-SN%s.local)",
-                        response['serial'],
-                        response['ip'],
-                        serial_padded
-                    )
+    "Found %s serial number %s at IP address %s (%s-SN%s.local)",
+    "K4Z" if response['type'].lower() == "k4z" else "K4",
+    response['serial'],
+    response['ip'],
+    "K4Z" if response['type'].lower() == "k4z" else "K4",
+    serial_padded
+)
 
         except Exception as e:
             logger.error("Error processing interface %s: %s", ip, e)
