@@ -1,6 +1,24 @@
 #!/usr/bin/env python3
 """
-Discover Elecraft KPA1500 amplifiers on the local network.
+findKPA1500.py - Discover Elecraft KPA1500 amplifiers on the local network.
+
+Copyright (C) 2026 Tom Schaefer, NY4I
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+USE AT YOUR OWN RISK.
 
 Cross-platform: macOS, Linux, Windows. Requires Python 3.8+ and psutil
 (pip install psutil).
