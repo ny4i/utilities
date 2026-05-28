@@ -404,12 +404,18 @@ def main():
         print("No KPA1500 discovered.")
         return 1
 
+    # Enrich first — the unicast follow-ups force ARP resolution on Linux,
+    # where receiving the broadcast reply alone doesn't always cache the neighbor.
+    enriched = []
+    for src_ip, ip, reply in sorted(found, key=lambda t: ipaddress.ip_address(t[1])):
+        info = enrich_amp(ip, args.timeout, src_ip=src_ip)
+        enriched.append((src_ip, ip, reply, info))
+
     arp = read_arp_table()
     print(f"Discovered {len(found)} KPA1500(s):")
     unknown_oui = []
-    for src_ip, ip, reply in sorted(found, key=lambda t: ipaddress.ip_address(t[1])):
+    for src_ip, ip, reply, info in enriched:
         mac = arp.get(ip, "?")
-        info = enrich_amp(ip, args.timeout, src_ip=src_ip)
         fw = info.get("fw") or "?"
         sn = info.get("sn") or "?"
         print(f"  {ip}  mac={mac}  fw={fw}  sn={sn}  reply={reply!r}")
