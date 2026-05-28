@@ -67,6 +67,14 @@ DEFAULT_UDP_TIMEOUT_S = 1.0
 PROBE_WORKERS = 128
 MAX_SUBNET_HOSTS = 4096
 
+# Post-discovery enrichment: each entry is (label, command_bytes).
+# ^RVM; -> ^RVM03.06; (main firmware revision)
+# ^SN;  -> ^SN00207;  (serial number)
+ENRICH_COMMANDS = (
+    ("fw", b"^RVM;"),
+    ("sn", b"^SN;"),
+)
+
 # Known Elecraft vendor OUIs used by the KPA1500 network module. Extend as
 # users report new prefixes via the channel below.
 ELECRAFT_OUIS = ("54:10:ec",)
@@ -174,6 +182,49 @@ def read_arp_table():
     return entries
 
 
+def query_amp(dst_ip, command, timeout, src_ip=None):
+    """Send a single ^XX; command to the amp and return the framed reply bytes."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except OSError:
+        return None
+    sock.settimeout(timeout)
+    try:
+        if src_ip:
+            try:
+                sock.bind((src_ip, 0))
+            except OSError:
+                return None
+        try:
+            sock.sendto(command, (dst_ip, KPA1500_UDP_PORT))
+            data, _ = sock.recvfrom(1024)
+        except (OSError, socket.timeout):
+            return None
+        stripped = data.strip()
+        if stripped.startswith(b"^") and stripped.endswith(b";"):
+            return stripped
+        return None
+    finally:
+        sock.close()
+
+
+def parse_framed(reply, command):
+    """Extract the payload from ^XX<payload>; given the original command bytes."""
+    if reply is None:
+        return None
+    # command is like b'^RVM;' — strip its ^XX prefix (len-1) and the trailing ';'
+    prefix_len = len(command) - 1
+    return reply[prefix_len:-1].decode("ascii", errors="replace")
+
+
+def enrich_amp(ip, timeout, src_ip=None):
+    """Query each ENRICH_COMMANDS entry; return {label: payload_or_None}."""
+    info = {}
+    for label, cmd in ENRICH_COMMANDS:
+        info[label] = parse_framed(query_amp(ip, cmd, timeout, src_ip), cmd)
+    return info
+
+
 def probe_targets(targets, udp_timeout, src_ip=None):
     """Parallel UDP probe a list of IPs from optional src_ip. Returns [(ip, reply), ...]."""
     found = []
@@ -249,7 +300,7 @@ def discover(interfaces, udp_timeout):
             log.info("Broadcasting ^ON; on %s%s", net, via)
             replies = broadcast_discover(src_ip, net, udp_timeout)
             if replies:
-                all_found.extend(replies)
+                all_found.extend((src_ip, ip, reply) for ip, reply in replies)
                 continue
             log.info("No broadcast replies on %s%s; sweeping", net, via)
         else:
@@ -264,15 +315,18 @@ def discover(interfaces, udp_timeout):
             continue
         hosts = [str(ip) for ip in net.hosts()]
         log.info("Sweeping %d hosts in %s%s", len(hosts), net, via)
-        all_found.extend(probe_targets(hosts, udp_timeout, src_ip=src_ip))
+        all_found.extend(
+            (src_ip, ip, reply)
+            for ip, reply in probe_targets(hosts, udp_timeout, src_ip=src_ip)
+        )
 
     # Dedupe by IP (multiple interfaces could observe the same amp)
     seen = set()
     deduped = []
-    for ip, reply in all_found:
+    for src_ip, ip, reply in all_found:
         if ip not in seen:
             seen.add(ip)
-            deduped.append((ip, reply))
+            deduped.append((src_ip, ip, reply))
     return deduped
 
 
@@ -324,9 +378,12 @@ def main():
     arp = read_arp_table()
     print(f"Discovered {len(found)} KPA1500(s):")
     unknown_oui = []
-    for ip, reply in sorted(found):
+    for src_ip, ip, reply in sorted(found, key=lambda t: ipaddress.ip_address(t[1])):
         mac = arp.get(ip, "?")
-        print(f"  {ip}  mac={mac}  reply={reply!r}")
+        info = enrich_amp(ip, args.timeout, src_ip=src_ip)
+        fw = info.get("fw") or "?"
+        sn = info.get("sn") or "?"
+        print(f"  {ip}  mac={mac}  fw={fw}  sn={sn}  reply={reply!r}")
         if mac != "?" and not any(mac.startswith(o) for o in ELECRAFT_OUIS):
             unknown_oui.append((ip, mac))
 
