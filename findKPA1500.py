@@ -87,6 +87,12 @@ ARP_WIN_RE = re.compile(
     r"^\s*(\d+\.\d+\.\d+\.\d+)\s+([0-9a-f]{2}(?:[-:][0-9a-f]{2}){5})\s",
     re.IGNORECASE | re.MULTILINE,
 )
+# iproute2 `ip neigh show`: "192.168.1.1 dev eth0 lladdr b8:27:eb:00:00:01 REACHABLE"
+# Modern Debian/Pi OS lack net-tools' arp; iproute2 is always present.
+ARP_IP_NEIGH_RE = re.compile(
+    r"^(\d+\.\d+\.\d+\.\d+)\s+dev\s+\S+\s+lladdr\s+([0-9a-f:]+)",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 log = logging.getLogger("findkpa1500")
 
@@ -164,22 +170,45 @@ def normalize_mac(mac):
     return ":".join(p.zfill(2) for p in parts)
 
 
-def read_arp_table():
-    """Best-effort ARP table read for MAC display. Returns {ip: mac}; {} on failure."""
-    system = platform.system().lower()
-    cmd = ["arp", "-a"] if system == "windows" else ["arp", "-an"]
+def _run_and_parse_arp(cmd, pattern):
+    """Run cmd, parse stdout for ip/mac pairs. Returns {} on failure or no matches."""
     try:
         out = subprocess.run(
             cmd, capture_output=True, text=True, check=True, timeout=5
         ).stdout
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
-        log.debug("arp unavailable (%s); MAC lookup will be skipped", e)
+        log.debug("%s unavailable: %s", " ".join(cmd), e)
         return {}
     entries = {}
-    pattern = ARP_WIN_RE if system == "windows" else ARP_UNIX_RE
     for m in pattern.finditer(out):
         entries[m.group(1)] = normalize_mac(m.group(2))
     return entries
+
+
+def read_arp_table():
+    """Best-effort ARP table read for MAC display. Returns {ip: mac}; {} on failure.
+
+    Linux is tried via iproute2's `ip neigh` first (always present), falling back
+    to net-tools' `arp -an` (often absent on modern Debian/Pi OS). macOS uses
+    `arp -an`; Windows uses `arp -a`.
+    """
+    system = platform.system().lower()
+    if system == "windows":
+        attempts = [(["arp", "-a"], ARP_WIN_RE)]
+    elif system == "linux":
+        attempts = [
+            (["ip", "neigh", "show"], ARP_IP_NEIGH_RE),
+            (["arp", "-an"], ARP_UNIX_RE),
+        ]
+    else:  # macOS, *BSD
+        attempts = [(["arp", "-an"], ARP_UNIX_RE)]
+
+    for cmd, pattern in attempts:
+        entries = _run_and_parse_arp(cmd, pattern)
+        if entries:
+            return entries
+    log.debug("No ARP source produced entries; MAC enrichment disabled")
+    return {}
 
 
 def query_amp(dst_ip, command, timeout, src_ip=None):
