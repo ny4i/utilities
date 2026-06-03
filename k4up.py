@@ -5,11 +5,11 @@ Cross-platform: Linux, macOS, Windows.
 """
 
 import socket
-import struct
 import sys
 import time
 import platform
 import subprocess
+import ipaddress
 
 #######################################
 # Configuration
@@ -62,14 +62,52 @@ def wait_for_host(host: str, timeout: int, interval: int) -> bool:
     return False
 
 
-def send_wol(mac: str) -> None:
-    """Send a Wake-on-LAN magic packet via UDP broadcast."""
+def local_ip_for(dst_ip: str) -> str:
+    """Return the local source IP the OS would use to reach dst_ip, or "".
+
+    Uses a *connected* UDP socket: connect() on UDP sends no packet, but the
+    kernel resolves the route and binds the socket to the egress interface's
+    address, which getsockname() then reports. Because the KPA1500 is on a
+    directly-attached subnet, this resolves to the interface on that subnet
+    rather than a VPN tunnel's default route. Returns "" if it can't resolve.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect((dst_ip, 9))
+        return sock.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        sock.close()
+
+
+def send_wol(mac: str, target_ip: str) -> None:
+    """Send a Wake-on-LAN magic packet to target_ip's subnet broadcast.
+
+    The packet is sent to the /24 directed broadcast of target_ip (e.g.
+    192.168.73.255) from a socket bound to the local interface that routes to
+    target_ip. This is deterministic on multi-homed hosts (Tailscale, OpenVPN):
+    an unbound send to 255.255.255.255 lets the OS pick the egress interface
+    from its default route, which a VPN can hijack so the magic packet leaves
+    via the tunnel and never reaches the amp's layer-2 segment. A /24 is assumed
+    (standard for ham LANs); change KPA1500_IP's mask handling if yours differs.
+    """
     mac_bytes = bytes.fromhex(mac.replace(":", "").replace("-", ""))
     magic = b"\xff" * 6 + mac_bytes * 16
+
+    src_ip = local_ip_for(target_ip)
+    bcast = str(ipaddress.ip_network(f"{target_ip}/24", strict=False).broadcast_address)
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(magic, ("255.255.255.255", 9))
-    print(f"  WOL magic packet sent to {mac}")
+        if src_ip:
+            try:
+                sock.bind((src_ip, 0))
+            except OSError:
+                src_ip = ""  # bind failed; fall back to OS-chosen interface
+        sock.sendto(magic, (bcast, 9))
+    via = f" via {src_ip}" if src_ip else " (unbound; OS default route)"
+    print(f"  WOL magic packet sent to {mac} on {bcast}:9{via}")
 
 
 def send_udp(host: str, port: int, data: str, timeout: float = 2.0) -> None:
@@ -100,7 +138,7 @@ def main() -> int:
     print(f"Checking KPA1500 at {KPA1500_IP}...")
     if not ping(KPA1500_IP):
         print("KPA1500 not reachable, attempting Wake-on-LAN...")
-        send_wol(KPA1500_MAC)
+        send_wol(KPA1500_MAC, KPA1500_IP)
 
         print(f"Waiting for KPA1500 to come up (timeout {KPA1500_WAIT_TIMEOUT}s)...")
         if not wait_for_host(KPA1500_IP, KPA1500_WAIT_TIMEOUT, PING_INTERVAL):

@@ -21,6 +21,11 @@ K4_PORT = 9200
 KPA1500_IP = "192.168.73.109"
 KPA1500_PORT = 1500
 
+# K4/0
+K4Z_IP = "192.168.73.159"
+K4Z_PORT = 9200
+
+
 #######################################
 # Functions
 #######################################
@@ -75,6 +80,18 @@ def main() -> int:
             print("PS0; sent (K4 will power off).")
         except OSError as e:
             print(f"Warning: failed to send PS0; to K4 - {e}", file=sys.stderr)
+
+    # Check if K4/0 is reachable
+    print(f"Checking K4/0 at {K4Z_IP}...")
+    if not ping(K4Z_IP):
+        print("K4/0 is not reachable - skipping PS0;.")
+    else:
+        print(f"Sending PS0; to K4/0 ({K4Z_IP}:{K4Z_PORT})...")
+        try:
+            send_tcp(K4Z_IP, K4Z_PORT, "PS0;")
+            print("PS0; sent (K4/0 will power off).")
+        except OSError as e:
+            print(f"Warning: failed to send PS0; to K4/0 - {e}", file=sys.stderr)
 
     # Send ^ON0; to KPA1500 to power it off
     print(f"Sending ^ON0; to KPA1500 ({KPA1500_IP}:{KPA1500_PORT})...")
