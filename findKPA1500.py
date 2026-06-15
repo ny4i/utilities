@@ -36,8 +36,9 @@ Broadcast-primary strategy: one packet per subnet, sweep only as backup.
 Tested: current KPA1500 firmware processes ^ON; on UDP/1500 from a subnet
 directed broadcast and replies unicast (^ON1; on, ^ON0; off).
 
-Authoritative identification is always the protocol reply, not the OUI — the
-OUI is only used to shrink the fast-path target list.
+Identification is the protocol reply itself (^ON1;/^ON0; to ^ON;, plus the
+^RVM;/^SN; enrichment). The MAC address is reported for WOL convenience only and
+is not used to gate discovery.
 
 The amplifier must be powered on and on the same L2 subnet as one of this
 host's interfaces (ARP and UDP unicast do not cross routers automatically).
@@ -63,6 +64,10 @@ except ImportError:
 
 KPA1500_UDP_PORT = 1500
 PROBE_COMMAND = b"^ON;"
+# Documented ^ON; responses: ^ON1; (on) / ^ON0; (off). This exact-match is the
+# sole identity gate for discovery, so it must reject a bare ^ON; (a blind UDP
+# echo of our own probe) and any other ^XYZ; frame from an unrelated service.
+KPA1500_REPLIES = (b"^ON0;", b"^ON1;")
 DEFAULT_UDP_TIMEOUT_S = 1.0
 PROBE_WORKERS = 128
 MAX_SUBNET_HOSTS = 4096
@@ -75,10 +80,16 @@ ENRICH_COMMANDS = (
     ("sn", b"^SN;"),
 )
 
-# Known Elecraft vendor OUIs used by the KPA1500 network module. Extend as
-# users report new prefixes via the channel below.
-ELECRAFT_OUIS = ("54:10:ec",)
-REPORT_EMAIL = "ny4i@ny4i.com"
+
+def is_kpa1500_reply(data):
+    """True iff data is a documented KPA1500 ^ON; response.
+
+    Sole identity gate for discovery. Strips surrounding whitespace, then
+    requires an exact match against KPA1500_REPLIES so a bare ^ON; echo or any
+    other ^...; frame is rejected.
+    """
+    return data.strip() in KPA1500_REPLIES
+
 
 # macOS / Linux net-tools: "? (192.168.1.1) at 60:22:32:6f:95:4f ..."
 ARP_UNIX_RE = re.compile(r"\(([\d.]+)\)\s+at\s+([0-9a-f:]+)", re.IGNORECASE)
@@ -154,8 +165,7 @@ def probe_kpa1500(dst_ip, timeout, src_ip=None):
             data, _ = sock.recvfrom(1024)
         except (socket.timeout, OSError):
             return None
-        stripped = data.strip()
-        if stripped.startswith(b"^") and stripped.endswith(b";"):
+        if is_kpa1500_reply(data):
             return data
         return None
     finally:
@@ -300,8 +310,7 @@ def broadcast_discover(src_ip, net, timeout):
                 data, addr = sock.recvfrom(1024)
             except (socket.timeout, OSError):
                 break
-            stripped = data.strip()
-            if not (stripped.startswith(b"^") and stripped.endswith(b";")):
+            if not is_kpa1500_reply(data):
                 log.debug("Ignoring non-KPA1500 reply from %s: %r", addr, data)
                 continue
             ip = addr[0]
@@ -413,24 +422,11 @@ def main():
 
     arp = read_arp_table()
     print(f"Discovered {len(found)} KPA1500(s):")
-    unknown_oui = []
     for src_ip, ip, reply, info in enriched:
         mac = arp.get(ip, "?")
         fw = info.get("fw") or "?"
         sn = info.get("sn") or "?"
         print(f"  {ip}  mac={mac}  fw={fw}  sn={sn}  reply={reply!r}")
-        if mac != "?" and not any(mac.startswith(o) for o in ELECRAFT_OUIS):
-            unknown_oui.append((ip, mac))
-
-    if unknown_oui:
-        print()
-        print("NOTE: discovered KPA1500(s) with an unrecognized vendor OUI:")
-        for ip, mac in unknown_oui:
-            print(f"  {ip}  mac={mac}  (OUI prefix {mac[:8]} not in known list)")
-        print(
-            "Please report so the fast path can be updated: "
-            f"email {REPORT_EMAIL} or open an issue on the project repo."
-        )
     return 0
 
 
