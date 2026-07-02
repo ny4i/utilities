@@ -107,7 +107,7 @@ Keys beginning with `_` (such as `_comment`) are ignored.
 stored in the config or the code** — they come from your `.netrc`:
 
 ```
-machine 192.168.73.195 login admin password YOURPASSWORD
+machine 192.168.0.100 login admin password YOURPASSWORD
 ```
 
 Lock the file down to your account (Windows):
@@ -141,7 +141,7 @@ the config directly at the `.py` files instead, e.g.:
   "off": ["{python}", "{here}/k4down.py"] }
 ```
 
-> **Note:** The K4/0 does **not** support Wake-on-LAN, so it cannot be powered
+> **Note:** Neither the K4 not the K4/0 support Wake-on-LAN, so they cannot be powered
 > up by a magic packet; it is handled by the `k4up.py` / `k4down.py` logic.
 
 The ShackMaster power-supply step invokes **`shackmaster.py`** (also in this
