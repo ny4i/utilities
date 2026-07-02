@@ -4,3 +4,6 @@ build/
 dist/
 __pycache__/
 *.pyc
+
+# Station-specific hamshack config (copy hamshack.sample.json -> hamshack.json)
+hamshack.json
