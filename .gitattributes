@@ -1,0 +1,32 @@
+# Line-ending policy for this repository.
+#
+# Goal: eliminate the "LF will be replaced by CRLF" churn/warnings on Windows.
+# We store all text as LF in the repo AND check it out as LF on every platform,
+# so Git never has to convert between LF and CRLF. These rules OVERRIDE each
+# user's core.autocrlf setting, so behavior no longer depends on local config.
+
+# Default: auto-detect text vs binary; text files are LF in the repo and LF
+# in the working tree on all platforms.
+* text=auto eol=lf
+
+# Windows batch scripts must stay CRLF to be safe with cmd.exe.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Explicit text types (documentation / clarity; covered by the default above).
+*.py   text eol=lf
+*.pl   text eol=lf
+*.php  text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.json text eol=lf
+*.spec text eol=lf
+
+# Known binary types: never normalize or convert.
+*.exe  binary
+*.dll  binary
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.pdf  binary
+*.zip  binary
