@@ -184,7 +184,7 @@ TESTS = [
     ("rx_nr_enable",   "rx_nr_enable:0;",   ["true", "false"],  True,  "Noise reduction (K4 NR)"),
     ("agc_mode",       "agc_mode:0;",       ["fast", "normal"], True,  "AGC speed (K4 GT)"),
     ("rx_filter_band", "rx_filter_band:0;", None,               True,  "Filter width (K4 BW) - edges in, width out"),
-    ("drive",          "drive:0;",          ["25"],             False, "TRANSMIT POWER (K4 PCX)"),
+    ("drive",          "drive:0;",          ["25"],             False, "TRANSMIT POWER (K4 PC)"),
 ]
 
 
@@ -205,12 +205,33 @@ def read_value(conn, read_cmd, name):
     return None
 
 
+def band_width(line):
+    """Width in Hz from an rx_filter_band message, or None."""
+    try:
+        parts = line.rstrip(";").partition(":")[2].split(",")
+        return int(parts[2]) - int(parts[1])
+    except (IndexError, ValueError):
+        return None
+
+
 def wait_for_broadcast(conn, name, want, seconds=3.0):
-    """A broadcast carrying `want` is the radio confirming. Returns the line, or None."""
+    """A broadcast matching `want` is the radio confirming. Returns the line, or None.
+
+    rx_filter_band is compared by WIDTH, not by the literal edges. TCI passes two edges and the
+    K4 takes a width, so only the width survives the round trip: the centre is recomputed from the
+    mode and the IF shift. Asking for -1000,3800 legitimately comes back as -900,3900 - same 4800
+    Hz width, re-centred. Comparing the last argument reported that correct result as a failure.
+    """
+    want_width = band_width("x:0," + want) if name == "rx_filter_band" else None
     deadline = time.time() + seconds
     while time.time() < deadline:
         m = conn.recv_text(timeout=0.4)
-        if m and m.startswith(name + ":") and value_of(m) == want:
+        if not m or not m.startswith(name + ":"):
+            continue
+        if want_width is not None:
+            if band_width(m) == want_width:
+                return m
+        elif value_of(m) == want:
             return m
     return None
 
@@ -246,7 +267,7 @@ def run_test(conn, name, read_cmd, values, description, dry_run):
     print("    send  : %s:0,%s;" % (name, target))
     conn.send("%s:0,%s;" % (name, target))
 
-    want = target.split(",")[-1]
+    want = target if name == "rx_filter_band" else target.split(",")[-1]
     confirmed = wait_for_broadcast(conn, name, want)
     if confirmed:
         print("    \033[32mPASS\033[0m  radio confirmed: %s" % confirmed)
@@ -258,7 +279,8 @@ def run_test(conn, name, read_cmd, values, description, dry_run):
 
     print("    restore: %s:0,%s;" % (name, restore))
     conn.send("%s:0,%s;" % (name, restore))
-    wait_for_broadcast(conn, name, restore.split(",")[-1], seconds=2.0)
+    wait_for_broadcast(conn, name, restore if name == "rx_filter_band" else restore.split(",")[-1],
+                       seconds=2.0)
     return result
 
 
