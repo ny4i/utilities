@@ -226,9 +226,8 @@ TESTS = [
 
     ("drive",             "drive:0;",             "drive:0,%s;",             "25",    "tx",
      "TRANSMIT POWER (K4 PC)"),
-    # tune_drive is NOT here. The K4 has no separate tune-power command, so the server reports it
-    # as a copy of drive and deliberately ignores a SET. Testing it would only prove that nothing
-    # happens - and an earlier version DID honour it, which changed the operating power instead.
+    ("tune_drive",        "tune_drive:0;",        "tune_drive:0,%s;",        None,    "tx",
+     "TUNE power - K4 menu item 69, range 1-50 W. NOT the operating power"),
 ]
 
 
@@ -276,6 +275,8 @@ DYNAMIC = {
     "agc_mode": other_agc,
     "modulation": other_mode,
     "vfo": shift_frequency,
+    # Menu 69 is 1-50 W, so pick a target inside that range rather than near the drive scale.
+    "tune_drive": lambda current: "15" if current != "15" else "25",
     "dds": shift_frequency,
 }
 
