@@ -226,8 +226,9 @@ TESTS = [
 
     ("drive",             "drive:0;",             "drive:0,%s;",             "25",    "tx",
      "TRANSMIT POWER (K4 PC)"),
-    ("tune_drive",        "tune_drive:0;",        "tune_drive:0,%s;",        "30",    "tx",
-     "Tune power - tracks drive on a K4"),
+    # tune_drive is NOT here. The K4 has no separate tune-power command, so the server reports it
+    # as a copy of drive and deliberately ignores a SET. Testing it would only prove that nothing
+    # happens - and an earlier version DID honour it, which changed the operating power instead.
 ]
 
 
