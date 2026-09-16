@@ -28,6 +28,8 @@ This is a collection of amateur radio (ham radio) utilities for contest log proc
 - `testDNS.pl` - Simple DNS resolution test for multiple domains
 
 ### Radio Equipment Discovery
+- `tcimonitor.py` - Live, top-style view of a TCI (Transceiver Control Interface) server. Connects over WebSocket, subscribes to the RX/TX sensors and renders whatever the server sends: per-receiver frequency, mode, AGC, filter passband, volume and S-meter bars, plus transmit power, SWR and keyer speed. Written against QK4 driving an Elecraft K4, but it is a plain TCI client and works with any TCI server (ExpertSDR3 and friends). Read-only by design - it sends two subscription commands and never a SET, so it is safe against a live transmitter. Python 3, standard library only; RFC 6455 framing is implemented inline rather than pulling in a websockets package. `--host`, `--port`, `--interval` (sensor rate, 30-1000 ms) and `--raw` (also show unrendered messages).
+
 - `findk4.py` - Broadcasts UDP packets on all network interfaces to discover Elecraft K4 transceivers on the local network. Displays serial numbers and IP addresses of discovered radios. Supports `-v/--verbose` for debug output and `-t/--timeout` to customize discovery timeout.
 
 ## Running Scripts
