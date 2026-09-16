@@ -383,8 +383,9 @@ def render(state, host, port, raw_lines):
     out.append(" rit      %-4s %+6d Hz            xit       %-4s %+6d Hz"
                % ("ON" if f.get("rit_enable_0") else "off", f.get("rit_offset_0", 0),
                   "ON" if f.get("xit_enable_0") else "off", f.get("xit_offset_0", 0)))
-    out.append(" drive    %-4s                    sql       %-4s %s dBm"
-               % (f.get("drive", "--"), "ON" if f.get("sql_on") else "off", f.get("sql", "--")))
+    out.append(" drive    %-4s W  tune %-4s W     sql       %-4s %s dBm"
+               % (f.get("drive", "--"), f.get("tune_drive", "--"),
+                  "ON" if f.get("sql_on") else "off", f.get("sql", "--")))
     out.append("")
     out.append(" \x1b[1mRX signal\x1b[0m")
     a = state.rx_dbm[0]
