@@ -210,6 +210,8 @@ TESTS = [
      "Noise reduction (K4 NR)"),
     ("agc_mode",          "agc_mode:0;",          "agc_mode:0,%s;",          None,    "safe",
      "AGC speed (K4 GT)"),
+    ("agc_gain",          "agc_gain:0;",          "agc_gain:0,%s;",          None,    "safe",
+     "AGC THRESHOLD - K4 menu item 10, raw 2-8"),
     ("rx_filter_band",    "rx_filter_band:0;",    "rx_filter_band:0,%s;",    None,    "safe",
      "Filter width (K4 BW) - edges in, width out"),
 
@@ -277,6 +279,8 @@ DYNAMIC = {
     "vfo": shift_frequency,
     # Menu 69 is 1-50 W, so pick a target inside that range rather than near the drive scale.
     "tune_drive": lambda current: "15" if current != "15" else "25",
+    # Menu 10 is 2-8; step within it rather than near the dB scale the protocol names.
+    "agc_gain": lambda current: "4" if current != "4" else "7",
     "dds": shift_frequency,
 }
 

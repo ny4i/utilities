@@ -300,6 +300,9 @@ class State:
                 self.fields["%s_%s" % (name, arg(0))] = int(arg(1))
             elif name == "agc_mode":
                 self.fields["agc_%s" % arg(0)] = arg(1)
+            elif name == "agc_gain":
+                # TCI names it gain; it is the AGC threshold (K4 menu 10, raw 2-8).
+                self.fields["agcthr_%s" % arg(0)] = arg(1)
             elif name == "sql_enable":
                 self.fields["sql_on"] = arg(1) == "true"
             elif name == "sql_level":
@@ -367,13 +370,13 @@ def render(state, host, port, raw_lines):
         return " ".join(on) if on else "-"
 
     # Receiver 0 (Main) and receiver 1 (Sub). trx_count says how many the server advertises.
-    out.append(" \x1b[1mRX0 Main\x1b[0m  %-14s %-6s agc %-7s filter %s  vol %s  %s"
+    out.append(" \x1b[1mRX0 Main\x1b[0m  %-14s %-6s agc %-6s thr %-2s filter %s  vol %s  %s"
                % (hz(f.get("vfo_0_0")), f.get("mode_0", "--"), f.get("agc_0", "--"),
-                  filt(0), vol(0), flags(0)))
+                  f.get("agcthr_0", "--"), filt(0), vol(0), flags(0)))
     if sub_on:
-        out.append(" \x1b[1mRX1 Sub \x1b[0m  %-14s %-6s agc %-7s filter %s  vol %s  %s"
+        out.append(" \x1b[1mRX1 Sub \x1b[0m  %-14s %-6s agc %-6s thr %-2s filter %s  vol %s  %s"
                    % (hz(f.get("vfo_1_0")), f.get("mode_1", "--"), f.get("agc_1", "--"),
-                      filt(1), vol(1), flags(1)))
+                      f.get("agcthr_1", "--"), filt(1), vol(1), flags(1)))
     else:
         out.append(" RX1 Sub    (off)%s" % (" " * 64))
     out.append(" TX freq   %-14s  split %-4s  wpm %-4s  trx_count %s"
