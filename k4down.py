@@ -69,18 +69,6 @@ def send_tcp(host: str, port: int, data: str, timeout: float = 2.0) -> str:
 #######################################
 
 def main() -> int:
-    # Check if K4 is reachable
-    print(f"Checking K4 at {K4_IP}...")
-    if not ping(K4_IP):
-        print("K4 is not reachable - skipping PS0;.")
-    else:
-        print(f"Sending PS0; to K4 ({K4_IP}:{K4_PORT})...")
-        try:
-            send_tcp(K4_IP, K4_PORT, "PS0;")
-            print("PS0; sent (K4 will power off).")
-        except OSError as e:
-            print(f"Warning: failed to send PS0; to K4 - {e}", file=sys.stderr)
-
     # Check if K4/0 is reachable
     print(f"Checking K4/0 at {K4Z_IP}...")
     if not ping(K4Z_IP):
@@ -92,6 +80,18 @@ def main() -> int:
             print("PS0; sent (K4/0 will power off).")
         except OSError as e:
             print(f"Warning: failed to send PS0; to K4/0 - {e}", file=sys.stderr)
+
+    # Check if K4 is reachable
+    print(f"Checking K4 at {K4_IP}...")
+    if not ping(K4_IP):
+        print("K4 is not reachable - skipping PS0;.")
+    else:
+        print(f"Sending PS0; to K4 ({K4_IP}:{K4_PORT})...")
+        try:
+            send_tcp(K4_IP, K4_PORT, "PS0;")
+            print("PS0; sent (K4 will power off).")
+        except OSError as e:
+            print(f"Warning: failed to send PS0; to K4 - {e}", file=sys.stderr)
 
     # Send ^ON0; to KPA1500 to power it off
     print(f"Sending ^ON0; to KPA1500 ({KPA1500_IP}:{KPA1500_PORT})...")
