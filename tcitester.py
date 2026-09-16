@@ -212,6 +212,10 @@ TESTS = [
      "AGC speed (K4 GT)"),
     ("agc_gain",          "agc_gain:0;",          "agc_gain:0,%s;",          None,    "safe",
      "AGC THRESHOLD - K4 menu item 10, raw 2-8"),
+    ("rx_nb_param",       "rx_nb_param:0;",       "rx_nb_param:0,%s;",       None,    "safe",
+     "NB level 0-15 and filter width 0-2 (K4 NBnnmf)"),
+    ("vfo_lock",          "vfo_lock:0,0;",        "vfo_lock:0,0,%s;",        None,    "radio",
+     "VFO A tuning lock (K4 LK) - blocks tuning while set"),
     ("rx_filter_band",    "rx_filter_band:0;",    "rx_filter_band:0,%s;",    None,    "safe",
      "Filter width (K4 BW) - edges in, width out"),
 
@@ -281,6 +285,7 @@ DYNAMIC = {
     "tune_drive": lambda current: "15" if current != "15" else "25",
     # Menu 10 is 2-8; step within it rather than near the dB scale the protocol names.
     "agc_gain": lambda current: "4" if current != "4" else "7",
+    "vfo_lock": flip,
     "dds": shift_frequency,
 }
 
@@ -300,6 +305,21 @@ def read_value(conn, read_cmd, name):
         if m and m.startswith(name + ":"):
             return m
     return None
+
+
+# Commands whose reply carries more than one value after the receiver index. Comparing only the
+# LAST argument would pass trivially when an earlier one is what changed - rx_nb_param reports
+# level then width, so changing the level leaves the last field identical. This is the same trap
+# that made rx_filter_band report a correct result as a failure.
+MULTI_VALUE = {"rx_nb_param"}
+
+
+def value_tail(line):
+    """Everything after the receiver index, as a comma-joined string."""
+    body = line.rstrip(";")
+    _, _, args = body.partition(":")
+    parts = args.split(",")
+    return ",".join(parts[1:]) if len(parts) > 1 else ""
 
 
 def band_width(line):
@@ -327,6 +347,9 @@ def wait_for_broadcast(conn, name, want, seconds=3.0):
             continue
         if want_width is not None:
             if band_width(m) == want_width:
+                return m
+        elif name in MULTI_VALUE:
+            if value_tail(m) == want:
                 return m
         elif value_of(m) == want:
             return m
@@ -356,7 +379,18 @@ def run_test(conn, test, dry_run, step=False, hold=0):
     print("    before: %s" % before)
 
     current = value_of(before)
-    if name == "rx_filter_band":
+    if name in MULTI_VALUE:
+        # Step the FIRST value (NB level) and leave the rest as they are.
+        parts = value_tail(before).split(",")
+        try:
+            level = int(parts[0])
+        except (IndexError, ValueError):
+            print("    SKIP  cannot parse %s" % before)
+            return "skip"
+        parts[0] = str(4 if level != 4 else 8)
+        target = ",".join(parts)
+        restore = value_tail(before)
+    elif name == "rx_filter_band":
         target = narrower_band(before)
         restore = before.rstrip(";").partition(":")[2].split(",", 1)[1]
     else:
@@ -380,7 +414,7 @@ def run_test(conn, test, dry_run, step=False, hold=0):
     print("    send  : %s" % (set_fmt % target))
     conn.send(set_fmt % target)
 
-    want = target if name == "rx_filter_band" else target.split(",")[-1]
+    want = target if (name == "rx_filter_band" or name in MULTI_VALUE) else target.split(",")[-1]
     confirmed = wait_for_broadcast(conn, name, want)
     if confirmed:
         print("    \033[32mPASS\033[0m  radio confirmed: %s" % confirmed)
@@ -394,8 +428,10 @@ def run_test(conn, test, dry_run, step=False, hold=0):
 
     print("    restore: %s" % (set_fmt % restore))
     conn.send(set_fmt % restore)
-    wait_for_broadcast(conn, name, restore if name == "rx_filter_band" else restore.split(",")[-1],
-                       seconds=2.0)
+    wait_for_broadcast(
+        conn, name,
+        restore if (name == "rx_filter_band" or name in MULTI_VALUE) else restore.split(",")[-1],
+        seconds=2.0)
     return result
 
 
