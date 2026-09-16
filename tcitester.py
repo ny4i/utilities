@@ -22,7 +22,8 @@ did. Only the unsolicited broadcast distinguishes them.
     python3 tcitester.py --list              # what it can test, no connection made
     python3 tcitester.py --dry-run           # connect, read values, send nothing
     python3 tcitester.py --safe              # receive-side only: RIT, NB, NR, AGC, filter
-    python3 tcitester.py --all               # adds transmit-side: drive
+    python3 tcitester.py --radio             # adds frequency, mode, split, sub RX
+    python3 tcitester.py --all               # every settable command, including drive
     python3 tcitester.py --only rit_enable
     python3 tcitester.py --hold 5           # keep each change for 5 s so you can watch the UI
     python3 tcitester.py --step             # wait for Enter between every stage
@@ -183,16 +184,99 @@ class Connection:
 # The tests. (name, read command, values to try, safe-for-receive-only)
 # ---------------------------------------------------------------------------------------------
 
+# Every settable command, with the exact wire form for each - some carry a channel index, so a
+# single "name:0,value;" template does not fit them all.
+#
+# TIERS
+#   safe  - receive-side settings. They do not move you off frequency or change what you hear.
+#   radio - changes the operating state: frequency, mode, split, second receiver.
+#   tx    - touches the transmitter's power.
+#
+# PTT is absent ON PURPOSE. There is no test here that keys the radio, and there should not be:
+# an automated tool that transmits is a tool that eventually transmits when you did not expect it.
 TESTS = [
-    ("rit_enable",     "rit_enable:0;",     ["true", "false"],  True,  "RIT on/off (K4 RT)"),
-    ("xit_enable",     "xit_enable:0;",     ["true", "false"],  True,  "XIT on/off (K4 XT)"),
-    ("rit_offset",     "rit_offset:0;",     ["250", "-250"],    True,  "RIT/XIT offset, ONE shared register (K4 RO)"),
-    ("rx_nb_enable",   "rx_nb_enable:0;",   ["true", "false"],  True,  "Noise blanker (K4 NB)"),
-    ("rx_nr_enable",   "rx_nr_enable:0;",   ["true", "false"],  True,  "Noise reduction (K4 NR)"),
-    ("agc_mode",       "agc_mode:0;",       ["fast", "normal"], True,  "AGC speed (K4 GT)"),
-    ("rx_filter_band", "rx_filter_band:0;", None,               True,  "Filter width (K4 BW) - edges in, width out"),
-    ("drive",          "drive:0;",          ["25"],             False, "TRANSMIT POWER (K4 PC)"),
+    # name, read command, set format, target (literal or callable(current)), tier, description
+    ("rit_enable",        "rit_enable:0;",        "rit_enable:0,%s;",        "true",  "safe",
+     "RIT on/off (K4 RT)"),
+    ("xit_enable",        "xit_enable:0;",        "xit_enable:0,%s;",        "true",  "safe",
+     "XIT on/off (K4 XT)"),
+    ("rit_offset",        "rit_offset:0;",        "rit_offset:0,%s;",        "250",   "safe",
+     "RIT/XIT offset (K4 RO)"),
+    ("xit_offset",        "xit_offset:0;",        "xit_offset:0,%s;",        "-250",  "safe",
+     "Same RO register as rit_offset - both names, one control"),
+    ("rx_nb_enable",      "rx_nb_enable:0;",      "rx_nb_enable:0,%s;",      "true",  "safe",
+     "Noise blanker (K4 NB)"),
+    ("rx_nr_enable",      "rx_nr_enable:0;",      "rx_nr_enable:0,%s;",      "true",  "safe",
+     "Noise reduction (K4 NR)"),
+    ("agc_mode",          "agc_mode:0;",          "agc_mode:0,%s;",          None,    "safe",
+     "AGC speed (K4 GT)"),
+    ("rx_filter_band",    "rx_filter_band:0;",    "rx_filter_band:0,%s;",    None,    "safe",
+     "Filter width (K4 BW) - edges in, width out"),
+
+    ("vfo",               "vfo:0,0;",             "vfo:0,0,%s;",             None,    "radio",
+     "VFO A frequency (K4 FA) - MOVES THE RADIO"),
+    ("dds",               "dds:0;",               "dds:0,%s;",               None,    "radio",
+     "Alias for the receive VFO"),
+    ("modulation",        "modulation:0;",        "modulation:0,%s;",        None,    "radio",
+     "Operating mode (K4 MD)"),
+    ("split_enable",      "split_enable:0;",      "split_enable:0,%s;",      "true",  "radio",
+     "Split on/off (K4 FT)"),
+    ("rx_channel_enable", "rx_channel_enable:0,1;", "rx_channel_enable:0,1,%s;", "true", "radio",
+     "Sub RX on/off (K4 SB)"),
+
+    ("drive",             "drive:0;",             "drive:0,%s;",             "25",    "tx",
+     "TRANSMIT POWER (K4 PC)"),
+    ("tune_drive",        "tune_drive:0;",        "tune_drive:0,%s;",        "30",    "tx",
+     "Tune power - tracks drive on a K4"),
 ]
+
+
+def flip(current):
+    return "false" if current == "true" else "true"
+
+
+def other_mode(current):
+    # Stay inside what the server advertises, and prefer a mode that is obvious on the radio.
+    for candidate in ("usb", "lsb", "cw", "am"):
+        if candidate != current:
+            return candidate
+    return "usb"
+
+
+def shift_frequency(current):
+    try:
+        return str(int(current) + 1000)
+    except ValueError:
+        return None
+
+
+def other_agc(current):
+    return "normal" if current == "fast" else "fast"
+
+
+def narrower_band(current_line):
+    """rx_filter_band carries two edges; change the width by 200 Hz."""
+    try:
+        parts = current_line.rstrip(";").partition(":")[2].split(",")
+        low, high = int(parts[1]), int(parts[2])
+    except (IndexError, ValueError):
+        return None
+    return "%d,%d" % (low, high - 200 if (high - low) > 400 else high + 200)
+
+
+# Targets that depend on the current value.
+DYNAMIC = {
+    "rit_enable": flip,
+    "xit_enable": flip,
+    "split_enable": flip,
+    "rx_channel_enable": flip,
+    "rx_nb_enable": flip,
+    "rx_nr_enable": flip,
+    "agc_mode": other_agc,
+    "modulation": other_mode,
+    "vfo": shift_frequency,
+    "dds": shift_frequency,
+}
 
 
 def value_of(line):
@@ -256,37 +340,39 @@ def pause(step, hold, message):
         time.sleep(hold)
 
 
-def run_test(conn, name, read_cmd, values, description, dry_run, step=False, hold=0):
+def run_test(conn, test, dry_run, step=False, hold=0):
+    name, read_cmd, set_fmt, target, tier, description = test
     print("\n--- %s : %s" % (name, description))
     before = read_value(conn, read_cmd, name)
     if before is None:
         print("    SKIP  no reply to %s - not implemented" % read_cmd)
         return "skip"
     print("    before: %s" % before)
+
+    current = value_of(before)
+    if name == "rx_filter_band":
+        target = narrower_band(before)
+        restore = before.rstrip(";").partition(":")[2].split(",", 1)[1]
+    else:
+        if name in DYNAMIC:
+            target = DYNAMIC[name](current)
+        restore = current
+
+    if target is None:
+        print("    SKIP  cannot derive a target from %s" % before)
+        return "skip"
+    if target == restore:
+        print("    SKIP  already at the only value worth trying")
+        return "skip"
+
     pause(step, 0, "note the current value on the radio and in QK4")
 
-    if name == "rx_filter_band":
-        # Two edges rather than one value; width is what actually changes on the radio.
-        parts = before.rstrip(";").partition(":")[2].split(",")
-        try:
-            low, high = int(parts[1]), int(parts[2])
-        except (IndexError, ValueError):
-            print("    SKIP  cannot parse the current band")
-            return "skip"
-        target = "%d,%d" % (low, high - 200 if (high - low) > 400 else high + 200)
-        restore = "%d,%d" % (low, high)
-        values = [target]
-    else:
-        restore = value_of(before)
-        values = [v for v in values if v != restore] or values
-
     if dry_run:
-        print("    DRY   would send %s:0,%s;" % (name, values[0]))
+        print("    DRY   would send %s" % (set_fmt % target))
         return "dry"
 
-    target = values[0]
-    print("    send  : %s:0,%s;" % (name, target))
-    conn.send("%s:0,%s;" % (name, target))
+    print("    send  : %s" % (set_fmt % target))
+    conn.send(set_fmt % target)
 
     want = target if name == "rx_filter_band" else target.split(",")[-1]
     confirmed = wait_for_broadcast(conn, name, want)
@@ -300,8 +386,8 @@ def run_test(conn, name, read_cmd, values, description, dry_run, step=False, hol
         result = "fail"
         pause(step, hold, "nothing should have changed")
 
-    print("    restore: %s:0,%s;" % (name, restore))
-    conn.send("%s:0,%s;" % (name, restore))
+    print("    restore: %s" % (set_fmt % restore))
+    conn.send(set_fmt % restore)
     wait_for_broadcast(conn, name, restore if name == "rx_filter_band" else restore.split(",")[-1],
                        seconds=2.0)
     return result
@@ -312,8 +398,12 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
-    ap.add_argument("--safe", action="store_true", help="receive-side settings only (default)")
-    ap.add_argument("--all", action="store_true", help="also test transmit power")
+    ap.add_argument("--safe", action="store_true",
+                    help="receive-side settings only (the default)")
+    ap.add_argument("--radio", action="store_true",
+                    help="also frequency, mode, split and the sub receiver")
+    ap.add_argument("--all", action="store_true",
+                    help="every settable command, including transmit power. Never keys the radio")
     ap.add_argument("--only", help="run a single test by name")
     ap.add_argument("--list", action="store_true", help="list the tests and exit")
     ap.add_argument("--dry-run", action="store_true", help="read values, send nothing")
@@ -324,15 +414,22 @@ def main():
     args = ap.parse_args()
 
     if args.list:
-        for name, _, _, safe, desc in TESTS:
-            print("  %-16s %-6s %s" % (name, "safe" if safe else "TX", desc))
+        for name, _, _, _, tier, desc in TESTS:
+            print("  %-20s %-6s %s" % (name, tier, desc))
+        print("\n  PTT is deliberately absent: nothing here keys the transmitter.")
         return 0
 
-    chosen = [t for t in TESTS if (args.only == t[0]) if args.only] or \
-             [t for t in TESTS if args.all or t[3]]
-    if args.only and not chosen:
-        print("no such test: %s (try --list)" % args.only)
-        return 1
+    if args.only:
+        chosen = [t for t in TESTS if t[0] == args.only]
+        if not chosen:
+            print("no such test: %s (try --list)" % args.only)
+            return 1
+    elif args.all:
+        chosen = list(TESTS)
+    elif args.radio:
+        chosen = [t for t in TESTS if t[4] in ("safe", "radio")]
+    else:
+        chosen = [t for t in TESTS if t[4] == "safe"]
 
     try:
         conn = Connection(args.host, args.port)
@@ -347,8 +444,8 @@ def main():
 
     tally = {}
     try:
-        for name, read_cmd, values, _safe, desc in chosen:
-            r = run_test(conn, name, read_cmd, values, desc, args.dry_run, args.step, args.hold)
+        for test in chosen:
+            r = run_test(conn, test, args.dry_run, args.step, args.hold)
             tally[r] = tally.get(r, 0) + 1
     except KeyboardInterrupt:
         print("\ninterrupted - check the last 'send' above; it may not have been restored")
