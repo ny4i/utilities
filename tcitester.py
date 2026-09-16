@@ -435,6 +435,51 @@ def run_test(conn, test, dry_run, step=False, hold=0):
     return result
 
 
+# TCI reserves these for its own framing, so a macro carries them substituted. Anything typed on
+# the command line has to go through the same door or the server decodes something else.
+CW_ESCAPES = ((":", "^"), (",", "~"), (";", "*"))
+
+
+def escape_cw(text):
+    for plain, wire in CW_ESCAPES:
+        text = text.replace(plain, wire)
+    return text
+
+
+def send_cw(conn, text, dry_run, stop_after=0.0):
+    """Send one cw_macros and, optionally, stop it part-way through.
+
+    THIS KEYS THE TRANSMITTER. Nothing else in this tool does, which is why it is its own option
+    rather than another entry in TESTS -- --all must stay safe to run on a live antenna.
+    """
+    wire = "cw_macros:0,%s;" % escape_cw(text)
+    print("\n  CW: %s" % text)
+    print("  send: %s" % wire)
+    if dry_run:
+        print("  DRY RUN - not sent")
+        return 0
+
+    conn.send(wire)
+
+    # There is no reply to wait for: the spec defines no confirmation for cw_macros, and the
+    # radio's own keying is the acknowledgement. Read anyway, so anything the server does say --
+    # a broadcast, an error -- is visible rather than swallowed.
+    deadline = time.time() + (stop_after if stop_after else 2.0)
+    while time.time() < deadline:
+        line = conn.recv_text(0.2)
+        if line:
+            print("  recv: %s" % line)
+
+    if stop_after:
+        print("  send: cw_macros_stop;   (abort after %.1fs)" % stop_after)
+        conn.send("cw_macros_stop;")
+        for _ in range(5):
+            line = conn.recv_text(0.2)
+            if line:
+                print("  recv: %s" % line)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -453,6 +498,12 @@ def main():
                     help="keep each change for N seconds before restoring, so the UI can be watched")
     ap.add_argument("--step", action="store_true",
                     help="wait for Enter at each stage instead of running straight through")
+    ap.add_argument("--cw", metavar="TEXT",
+                    help="send TEXT as CW and exit. KEYS THE TRANSMITTER. "
+                         "Speed markers > and < (+/-5 wpm) and prosigns like |SK| are passed "
+                         "through for the server to interpret")
+    ap.add_argument("--cw-stop-after", type=float, default=0.0, metavar="SECONDS",
+                    help="with --cw, send cw_macros_stop after SECONDS to test the abort")
     args = ap.parse_args()
 
     if args.list:
@@ -483,6 +534,14 @@ def main():
     print("connected: %d-command init burst" % len(burst))
     if args.dry_run:
         print("DRY RUN - nothing will be sent to the radio")
+
+    if args.cw:
+        # Its own path, and it EXITS. Running the settings sweep afterwards would be changing the
+        # radio while it is keying.
+        try:
+            return send_cw(conn, args.cw, args.dry_run, args.cw_stop_after)
+        finally:
+            conn.close()
 
     tally = {}
     try:
