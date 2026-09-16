@@ -63,6 +63,25 @@ except ImportError:
     sys.exit(2)
 
 KPA1500_UDP_PORT = 1500
+# Probe is a bare ^ON; state query with NO leading terminator, sent one command
+# per datagram. Per the Elecraft KPA1500 Programming Reference Manual, the UDP
+# server shares the TCP command set but you must "send only one command and
+# expect at most one response" (and UDP packets may be dropped under congestion).
+# So this is the documented contract, not a quirk: never pipeline commands in one
+# UDP datagram -- the amp answers only the FIRST and discards the rest with no
+# NAK/error. The ENRICH_COMMANDS path honors this (one command per datagram).
+# Corollaries of that one-command rule, both verified on live firmware:
+#  - Do NOT prepend ';' as a serial-style buffer flush: it becomes the single
+#    (empty) command, so the amp replies with a bare ';' instead of ^ON1;/^ON0;
+#    and fails the identity gate below ('^ON;' -> '^ON1;'; ';^ON;' -> ';').
+#  - Batching is silently lossy: a 9-byte '^ON;^RVM;' datagram yields exactly one
+#    '^ON1;' reply, never '^RVM03.06;' (on the wire in KPA1500_udp.pcapng).
+# The amp also listens on TCP/1500, where it is stream-based (serial-like): it
+# echoes leading ';' and STILL answers the trailing ^ON; (e.g. ';;;;^ON;' ->
+# ';;;;^ON1;'; '^ON;^ON;' -> '^ON1;^ON1;'). So Bob N6TV's ';'-flush advice is
+# correct for serial/TCP but must NOT be applied to this UDP discovery path.
+# A future TCP control path would need endswith/scan reply matching, not the
+# exact-match used here.
 PROBE_COMMAND = b"^ON;"
 # Documented ^ON; responses: ^ON1; (on) / ^ON0; (off). This exact-match is the
 # sole identity gate for discovery, so it must reject a bare ^ON; (a blind UDP
