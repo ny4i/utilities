@@ -2,8 +2,10 @@
 """
 tcimonitor -- a live, top-style view of everything a TCI server reports.
 
-Written for QK4 (github.com/ny4i/QK4), which speaks TCI to an Elecraft K4, but it is a plain TCI
-client and will talk to any TCI server.
+Written for QK4 (github.com/mikeg-dal/QK4), which speaks TCI to an Elecraft K4, but it is a plain
+TCI client and will talk to any TCI server.
+
+Copyright 2026 - Thomas M. Schaefer, NY4I
 
 WHY THIS EXISTS.  A conformance sweep that sends queries and checks replies is structurally blind
 to the other half of the protocol: the messages a server sends UNPROMPTED.  That blind spot is
