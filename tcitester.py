@@ -24,11 +24,18 @@ did. Only the unsolicited broadcast distinguishes them.
     python3 tcitester.py --safe              # receive-side only: RIT, NB, NR, AGC, filter
     python3 tcitester.py --all               # adds transmit-side: drive
     python3 tcitester.py --only rit_enable
+    python3 tcitester.py --hold 5           # keep each change for 5 s so you can watch the UI
+    python3 tcitester.py --step             # wait for Enter between every stage
 
 SAFETY. Nothing here keys the transmitter - there is no PTT test and no tune. --safe touches
 receive settings only. `drive` changes transmit POWER, so it is excluded from --safe and needs
 --all or --only; it is restored afterwards like everything else. Run with the radio in TX Test
 mode if you want belt and braces.
+
+WATCHING THE RADIO OR THE QK4 WINDOW. By default a value is changed and restored within a couple
+of seconds, which is too fast to see. --hold N keeps the new value for N seconds before restoring,
+and --step waits for Enter at each stage so you can compare the radio, QK4's own display and the
+client at your own pace.
 
 Ctrl-C is safe at any point, but a test interrupted between steps 2 and 4 leaves that one setting
 changed - the original is printed before each change so you can put it back by hand.
@@ -236,13 +243,27 @@ def wait_for_broadcast(conn, name, want, seconds=3.0):
     return None
 
 
-def run_test(conn, name, read_cmd, values, description, dry_run):
+def pause(step, hold, message):
+    """--step waits for a keypress; --hold just sleeps. Neither stops reading the socket for long
+    enough to matter - the server buffers, and the next read drains it."""
+    if step:
+        try:
+            input("      [%s - press Enter]" % message)
+        except EOFError:
+            pass
+    elif hold:
+        print("      holding %ds - %s" % (hold, message))
+        time.sleep(hold)
+
+
+def run_test(conn, name, read_cmd, values, description, dry_run, step=False, hold=0):
     print("\n--- %s : %s" % (name, description))
     before = read_value(conn, read_cmd, name)
     if before is None:
         print("    SKIP  no reply to %s - not implemented" % read_cmd)
         return "skip"
     print("    before: %s" % before)
+    pause(step, 0, "note the current value on the radio and in QK4")
 
     if name == "rx_filter_band":
         # Two edges rather than one value; width is what actually changes on the radio.
@@ -272,10 +293,12 @@ def run_test(conn, name, read_cmd, values, description, dry_run):
     if confirmed:
         print("    \033[32mPASS\033[0m  radio confirmed: %s" % confirmed)
         result = "pass"
+        pause(step, hold, "the radio and QK4 should BOTH show the new value now")
     else:
         now = read_value(conn, read_cmd, name)
         print("    \033[31mFAIL\033[0m  no broadcast; still reads %s" % now)
         result = "fail"
+        pause(step, hold, "nothing should have changed")
 
     print("    restore: %s:0,%s;" % (name, restore))
     conn.send("%s:0,%s;" % (name, restore))
@@ -294,6 +317,10 @@ def main():
     ap.add_argument("--only", help="run a single test by name")
     ap.add_argument("--list", action="store_true", help="list the tests and exit")
     ap.add_argument("--dry-run", action="store_true", help="read values, send nothing")
+    ap.add_argument("--hold", type=int, default=0, metavar="N",
+                    help="keep each change for N seconds before restoring, so the UI can be watched")
+    ap.add_argument("--step", action="store_true",
+                    help="wait for Enter at each stage instead of running straight through")
     args = ap.parse_args()
 
     if args.list:
@@ -321,7 +348,7 @@ def main():
     tally = {}
     try:
         for name, read_cmd, values, _safe, desc in chosen:
-            r = run_test(conn, name, read_cmd, values, desc, args.dry_run)
+            r = run_test(conn, name, read_cmd, values, desc, args.dry_run, args.step, args.hold)
             tally[r] = tally.get(r, 0) + 1
     except KeyboardInterrupt:
         print("\ninterrupted - check the last 'send' above; it may not have been restored")
