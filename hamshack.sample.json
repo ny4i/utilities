@@ -1,0 +1,48 @@
+{
+   "_comment": [
+      "Sample config for hamshack.py. Copy this file to hamshack.json (same",
+      "directory as the script) and edit it for your station. hamshack.json is",
+      "git-ignored because it is station-specific.",
+      "",
+      "dli_host        : hostname or IP of your Digital Loggers web power switch.",
+      "                  Credentials come from your .netrc (curl --digest --netrc),",
+      "                  NOT this file. Add: machine <dli_host> login <user> password <pw>.",
+      "verify_timeout  : max seconds to wait for an outlet's physical_state to match.",
+      "verify_interval : seconds between physical_state polls.",
+      "",
+      "sequence        : ordered list of steps, walked top-to-bottom on power-up",
+      "                  and in reverse on power-down. Two step types:",
+      "",
+      "  { \"type\": \"dli\", \"outlet\": N, \"name\": \"...\" }",
+      "     outlet is the RELATIVE (0-based) outlet number = physical outlet - 1.",
+      "",
+      "  { \"type\": \"command\", \"name\": \"...\", \"on\": <cmd>, \"off\": <cmd>,",
+      "    \"retry_timeout\": 0.0, \"retry_interval\": 3.0 }",
+      "     <cmd> is either a string (run via the shell, for PATH lookup like k4up)",
+      "     or a list of tokens (run directly, no shell). Placeholders {python} and",
+      "     {here} expand to the interpreter and this script's directory.",
+      "     retry_timeout > 0 re-runs the command until it succeeds or the window",
+      "     elapses (useful when a device needs time to boot after its outlet powers on).",
+      "",
+      "Keys beginning with an underscore (like this one) are ignored."
+   ],
+
+   "dli_host": "192.168.0.100",
+   "verify_timeout": 10.0,
+   "verify_interval": 0.5,
+   "sequence": [
+      { "type": "dli", "outlet": 1, "name": "Power supply mains" },
+      {
+         "type": "command",
+         "name": "Power supply output",
+         "on":  ["{python}", "{here}/shackmaster.py", "on"],
+         "off": ["{python}", "{here}/shackmaster.py", "off"],
+         "retry_timeout": 30.0,
+         "retry_interval": 3.0
+      },
+      { "type": "dli", "outlet": 2, "name": "Rotator controller" },
+      { "type": "dli", "outlet": 5, "name": "Antenna switch" },
+      { "type": "dli", "outlet": 0, "name": "Second radio" },
+      { "type": "command", "name": "Main radio", "on": "radio_up", "off": "radio_down" }
+   ]
+}
