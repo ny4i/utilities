@@ -330,11 +330,17 @@ def main():
                         print("%s  << %s" % (stamp(), msg))
                         last[kind] = msg
 
-            # TB's count is the THREE DIGITS after the name -- TB000; is empty, TB003IB; is three
-            # characters plus what the radio decoded.  The old test was startswith("TB0"), which
-            # matched both and so tested nothing.
+            # TB is TWO counters and a string: one digit of TRANSMIT buffer, two digits of
+            # DECODED-character count, then the decoded text.  TB606SHEHET; is transmit buffer 6
+            # with six decoded characters waiting; TB001A; is an empty transmit buffer and one
+            # decoded "A".
+            #
+            # ONLY THE FIRST DIGIT MATTERS HERE.  Waiting for all three to be zero waits for the
+            # RECEIVER to go quiet as well, and on a live antenna it never does -- the decoder
+            # keeps producing characters out of noise, each one resetting the quiet timer.  That
+            # hung the tool on a transmission that had finished seconds earlier.
             tb = last.get("TB", "TB000;")
-            idle = last.get("TQ") == "TQ0;" and tb[2:5] == "000"
+            idle = last.get("TQ") == "TQ0;" and tb[2:3] == "0"
 
             # `seen_reply`, not just `seen_tx`.  A KYW message makes the radio hold every following
             # host command -- including the TQ;TB; polls this loop sends -- until the text has been
