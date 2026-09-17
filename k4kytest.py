@@ -216,7 +216,7 @@ def main():
     ap.add_argument("--pad", type=int, default=0, metavar="N",
                     help="space-pad the last KY of each run to N characters (QK4 pads to 22)")
     ap.add_argument("--qk4", action="store_true",
-                    help="exactly what QK4 sends today: --markers --chunk 22 --pad 22")
+                    help="exactly what QK4 sends today: --markers --chunk 60 --pad 0")
     ap.add_argument("--wpm", type=int, default=20, metavar="N",
                     help="base speed for --markers with --dry-run (a live run reads KS from the radio)")
     ap.add_argument("--poll", type=float, default=0.1, metavar="SECONDS",
@@ -233,7 +233,7 @@ def main():
     if args.poll <= 0:
         ap.error("--poll must be more than 0")
     if args.qk4:
-        args.markers, args.chunk, args.pad = True, 22, 22
+        args.markers, args.chunk, args.pad = True, 60, 0
     # With --markers, < > and | are macro grammar and are consumed before anything reaches KY.
     bad = sorted(FORBIDDEN & set(args.text) - (set("<>|") if args.markers else set()))
     if bad:
